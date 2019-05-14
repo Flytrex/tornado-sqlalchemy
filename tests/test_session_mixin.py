@@ -53,3 +53,26 @@ class SessionMixinTestCase(BaseTestCase):
         Handler().run()
 
         self.assertEqual(len(sessions), 2)
+
+    def test_async_session(self):
+        class Handler(SessionMixin):
+            def __init__(h_self):
+                h_self.application = Mock()
+                h_self.application.settings = {'session_factory': self.factory}
+
+            async def run(h_self):
+                async with h_self.async_make_session() as session:
+                    new_user1 = User(username="testusername1")
+                    await h_self.run_in_executor(session.add, new_user)
+
+                    new_user2 = User(username="testusername2")
+                    await h_self.run_in_executor(session.add, new_user)
+
+
+                async with h_self.async_make_session() as session:
+                    count = h_self.run_in_executor(session.query(User).count)
+                    self.assertEqual(count, 2)
+
+        Handler().run()
+
+

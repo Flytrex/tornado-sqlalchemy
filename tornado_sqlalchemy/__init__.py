@@ -1,6 +1,6 @@
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base as sa_declarative_base
@@ -103,6 +103,10 @@ class SessionFactory:
 class SessionMixin:
     _session = None
 
+    async def run_in_executor(self, func, *args):
+        loop = tornado.ioloop.IOLoop.current()
+        return await loop.run_in_executor(None, func, *args)
+
     @contextmanager
     def make_session(self):
         session = None
@@ -120,6 +124,24 @@ class SessionMixin:
         finally:
             if session:
                 session.close()
+
+    @asynccontextmanager
+    async def async_make_session(self):
+        session = None
+
+        try:
+            session = await self.run_in_executor(self._make_session)
+
+            yield session
+        except Exception:
+            if session:
+                await self.run_in_executor(session.rollback)
+            raise
+        else:
+            await self.run_in_executor(session.commit)
+        finally:
+            if session:
+                await self.run_in_executor(session.close)
 
     def on_finish(self):
         next_on_finish = None
